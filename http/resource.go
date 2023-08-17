@@ -19,6 +19,25 @@ import (
 	"github.com/filebrowser/filebrowser/v2/fileutils"
 )
 
+var treeGetHandler = withUser(func(w http.ResponseWriter, r *http.Request, d *data) (int, error) {
+	checksum := r.URL.Query().Get("checksum")
+	if checksum == "" {
+		checksum = "md5"
+	}
+
+	tree, err := files.NewTreeInfo(files.FileTreeOptions{
+		Fs:       d.user.Fs,
+		Path:     r.URL.Path,
+		Checker:  d,
+		Checksum: checksum,
+	})
+	if err != nil {
+		return errToStatus(err), err
+	}
+
+	return renderJSON(w, r, tree)
+})
+
 var resourceGetHandler = withUser(func(w http.ResponseWriter, r *http.Request, d *data) (int, error) {
 	file, err := files.NewFileInfo(files.FileOptions{
 		Fs:         d.user.Fs,

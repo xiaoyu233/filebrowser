@@ -10,13 +10,15 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/golang-jwt/jwt/v4/request"
+	"github.com/mileusna/useragent"
 
 	"github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/users"
 )
 
 const (
-	TokenExpirationTime = time.Hour * 2
+	TokenExpirationTime    = time.Hour * 2
+	TokenAppExpirationTime = time.Hour * 24 * 90
 )
 
 type userInfo struct {
@@ -76,7 +78,14 @@ func withUser(fn handleFunc) handleFunc {
 			return http.StatusUnauthorized, nil
 		}
 
-		expired := !tk.VerifyExpiresAt(time.Now().Add(time.Hour), true)
+		userAgentString := r.Header.Get("User-Agent")
+		ua := useragent.Parse(userAgentString)
+		remianTime := time.Hour
+		if ua.IsAndroid() || ua.IsIOS() {
+			remianTime = time.Hour * 24 * 45
+		}
+
+		expired := !tk.VerifyExpiresAt(time.Now().Add(remianTime), true)
 		updated := tk.IssuedAt != nil && tk.IssuedAt.Unix() < d.store.Users.LastUpdate(tk.User.ID)
 
 		if expired || updated {
@@ -176,7 +185,14 @@ var renewHandler = withUser(func(w http.ResponseWriter, r *http.Request, d *data
 	return printToken(w, r, d, d.user)
 })
 
-func printToken(w http.ResponseWriter, _ *http.Request, d *data, user *users.User) (int, error) {
+func printToken(w http.ResponseWriter, r *http.Request, d *data, user *users.User) (int, error) {
+	userAgentString := r.Header.Get("User-Agent")
+	ua := useragent.Parse(userAgentString)
+	expirationTime := TokenExpirationTime
+	if ua.IsAndroid() || ua.IsIOS() {
+		expirationTime = TokenAppExpirationTime
+	}
+
 	claims := &authToken{
 		User: userInfo{
 			ID:           user.ID,
@@ -191,7 +207,7 @@ func printToken(w http.ResponseWriter, _ *http.Request, d *data, user *users.Use
 		},
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExpirationTime)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expirationTime)),
 			Issuer:    "File Browser",
 		},
 	}
